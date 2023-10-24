@@ -183,16 +183,26 @@ if __name__ == "__main__":
         model = T5ForSequenceClassification.from_pretrained(model_path, config=config)
     model = model.to(exp_configs.device)
 
+    sentence = 'hide new secretions from the parental units'
+    sentence_tokenize = tokenizer(sentence)
+    input_ids = torch.tensor(sentence_tokenize['input_ids'])
+    attention_mask = torch.tensor(sentence_tokenize['attention_mask'])
+    input_ids_gpu = input_ids.to(exp_configs.device)
+    attention_mask_gpu = attention_mask.to(exp_configs.device)
 
-    id_dataset_tensors, id_data_util = process_dataset(id_dataset, is_id=True, tokenizer=tokenizer)
-    save_final_layer_embeddings(processed_dataset=id_dataset_tensors, data_util=id_data_util, is_id=True, model=model)
+    output = model.transformer(input_ids_gpu, attention_mask_gpu)
+    print(output)
 
-    logger.info(f'******************** ood_datasets:{ood_datasets}')
 
-    ood_datasets = ast.literal_eval(ood_datasets)
-    for ood_dataset in ood_datasets:
-        logger.info(f'******************** ood_datasets:{ood_dataset}')
-        ood_dataset_tensors, ood_data_util = process_dataset(ood_dataset, is_id=False, tokenizer=tokenizer)
-        save_final_layer_embeddings(processed_dataset=ood_dataset_tensors, data_util=ood_data_util, is_id=False, model=model)
+    # id_dataset_tensors, id_data_util = process_dataset(id_dataset, is_id=True, tokenizer=tokenizer)
+    # save_final_layer_embeddings(processed_dataset=id_dataset_tensors, data_util=id_data_util, is_id=True, model=model)
 
-    get_umap_plots_from_embeddings([id_dataset] + ood_datasets, filename=f'{model_class}')
+    # logger.info(f'******************** ood_datasets:{ood_datasets}')
+
+    # ood_datasets = ast.literal_eval(ood_datasets)
+    # for ood_dataset in ood_datasets:
+    #     logger.info(f'******************** ood_datasets:{ood_dataset}')
+    #     ood_dataset_tensors, ood_data_util = process_dataset(ood_dataset, is_id=False, tokenizer=tokenizer)
+    #     save_final_layer_embeddings(processed_dataset=ood_dataset_tensors, data_util=ood_data_util, is_id=False, model=model)
+
+    # get_umap_plots_from_embeddings([id_dataset] + ood_datasets, filename=f'{model_class}')

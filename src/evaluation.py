@@ -4,7 +4,8 @@ import sklearn.metrics as sk
 from sklearn.metrics import roc_auc_score
 
 from model import compute_ood
-from src.utils.mmd import MMD
+from utils.mmd import MMD
+# from src.utils.mmd import MMD
 
 
 def merge_keys(l, keys):

@@ -2,6 +2,7 @@
 __pycache__*
 dataset/id_data/*
 dataset/ood_data/*
+data/*
 checkpoints
 finetune_restlts*/
 op*.txt
@@ -9,6 +10,8 @@ models/*
 plots/*
 logs/*
 temp_outputs/*
+src/wandb/*
+src/training_output/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

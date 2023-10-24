@@ -1,4 +1,5 @@
-from src.utils.startup import exp_configs
+from utils.startup import exp_configs
+# from src.utils.startup import exp_configs
 from transformers import AutoModelForSequenceClassification, AutoModelForMaskedLM, AutoTokenizer, AutoConfig
 
 
@@ -18,14 +19,16 @@ def load_model(model_path, num_labels=None, load_only_body=False):
 
 def load_tokenizer(model_str):
     if model_str == 'roberta':
-        model_name = '/pretrained_models/roberta_base'
+        model_name = 'roberta-base'
     elif model_str == 'gpt2':
-        model_name = '/pretrained_models/gpt2_base'  # gpt2-small; renamed to base for convenience
+        model_name = 'gpt2'  # gpt2-small; renamed to base for convenience
+        # model_name = '/pretrained_models/gpt2_base'  # gpt2-small; renamed to base for convenience
     elif model_str == 't5':
-        model_name = '/pretrained_models/t5_base'
+        model_name = 't5_base'
 
-    model_path = exp_configs.MODEL_DIR + f'/{model_name}'
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    # model_path = exp_configs.MODEL_DIR + f'/{model_name}'
+    # tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
     if model_str == 'gpt2':
         tokenizer.pad_token = tokenizer.eos_token

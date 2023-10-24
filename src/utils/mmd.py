@@ -1,6 +1,7 @@
 import torch
 import numpy as np
-from src.utils.startup import exp_configs
+from utils.startup import exp_configs
+# from src.utils.startup import exp_configs
 
 device = exp_configs.device
 

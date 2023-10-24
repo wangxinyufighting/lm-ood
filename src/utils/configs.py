@@ -34,6 +34,7 @@ class Config(object):
 
         # Training configs
         self.do_train = False
+        self.use_adapter = False
         self.num_train_epochs = 10
         self.linear_probe = False
         self.epoch_wise_eval = False
@@ -73,7 +74,14 @@ class Config(object):
                 raise ValueError(f"{k} is not in the config")
             setattr(self, k, v)
 
-        self.model_name_or_path = self.MODEL_DIR + f'/pretrained_models/{self.model_class}_base'
+        # self.model_name_or_path = self.model_class
+        if self.model_class == 'gpt2':
+            self.model_name_or_path = self.model_class
+        elif self.model_class == 'roberta':
+            self.model_name_or_path = 'roberta-base'
+        else:
+            self.model_name_or_path = self.MODEL_DIR + f'/pretrained_models/{self.model_class}_base'
+
         self.savedir = self.MODEL_DIR + f'/finetuned_models/{self.model_class}_base_{self.task_name}'
 
 

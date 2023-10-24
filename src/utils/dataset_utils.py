@@ -7,8 +7,10 @@ import matplotlib.pyplot as plt
 from transformers import DataCollatorForLanguageModeling
 from datasets import load_dataset, load_from_disk, concatenate_datasets, DatasetDict, Dataset
 
-from src.utils.plot_utils import plot_bar
-from src.utils.startup import exp_configs, logger
+from utils.plot_utils import plot_bar
+from utils.startup import exp_configs, logger
+# from src.utils.plot_utils import plot_bar
+# from src.utils.startup import exp_configs, logger
 
 
 class DatasetUtil():
@@ -36,18 +38,24 @@ class DatasetUtil():
 
     def get_dataset(self, dataset_name, split):
         logger.info(f'Loading {split} split of {dataset_name} dataset...')
+        logger.info(f'*** hf_cache_dir: {self.hf_cache_dir} ')
 
         if dataset_name in ['imdb', 'yelp_polarity', 'snli', 'dbpedia_14']:
             return load_dataset(dataset_name, split=split, cache_dir=self.hf_cache_dir)
 
         if dataset_name in ['sst2', 'rte', 'stsb']:
-            return load_dataset('glue', dataset_name, split=split, cache_dir=self.hf_cache_dir)
+            # return load_dataset('glue', dataset_name, split=split, cache_dir=self.hf_cache_dir)
+            return load_dataset(dataset_name, split=split, cache_dir=self.hf_cache_dir)
 
         if dataset_name in ['record']:
-            return load_dataset('super_glue', dataset_name, split=split, cache_dir=self.hf_cache_dir)
+            return load_dataset(dataset_name, split=split, cache_dir=self.hf_cache_dir)
+            # return load_dataset('super_glue', dataset_name, split=split, cache_dir=self.hf_cache_dir)
 
         if dataset_name == 'mnli':
+            # dataset_name = 'multi_nli'
+            # dataset = load_dataset(dataset_name, split=split, cache_dir=self.hf_cache_dir)
             dataset = load_dataset('glue', dataset_name, split=split, cache_dir=self.hf_cache_dir)
+            # dataset = load_dataset('glue', dataset_name, split=split, cache_dir=self.hf_cache_dir)
             processed_dataset = DatasetDict()
             processed_dataset['train'] = dataset['train']
             processed_dataset['val'] = self.merge_dataset_splits([dataset['validation_matched'],
@@ -230,7 +238,14 @@ class DatasetUtil():
 
         if dataset_name == '20newsgroups':
             from sklearn.datasets import fetch_20newsgroups
+            import datasets
             processed_dataset = DatasetDict()
+
+            for split in ['train', 'test']:
+                raw_dataset = datasets.load_dataset('SetFit/20_newsgroups', split=split)
+                dataset_split = []
+                for i in range(raw_dataset.num_rows):
+                    sentence = raw_dataset
 
             for split in ['train', 'test']:  # splits are 'train', 'test' or 'all'
                 raw_dataset = fetch_20newsgroups(subset=split)

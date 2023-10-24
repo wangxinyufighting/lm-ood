@@ -6,25 +6,40 @@ import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss, MSELoss
 from sklearn.covariance import EmpiricalCovariance
 from transformers import BertPreTrainedModel, RobertaModel, GPT2Model, GPT2PreTrainedModel, T5PreTrainedModel, T5EncoderModel
-from src.utils.startup import exp_configs
+from utils.startup import exp_configs, logger
+from transformers import RobertaConfig, RobertaModelWithHeads, RobertaModel
+
+# from src.utils.startup import exp_configs
 
 
-def get_sent_embeddings(model,  input_ids, attention_mask):
+def get_sent_embeddings(model, input_ids, attention_mask):
     if 'roberta' in model.config._name_or_path:
         outputs = model.roberta(input_ids, attention_mask=attention_mask)
         hidden_states = outputs[0]  # (N, L, D)
+
+        # logger.info(f'************ hidden_states size:{hidden_states.size()}')
+
         if model.config.sentence_embedding == 'average':
             pooled_outputs = torch.mean(hidden_states, dim=1)  # (N, D)
         else:
             pooled_outputs = hidden_states[:, 0, :]  # take <s> token (equiv. to [CLS]) (N, D)
+        
+        # logger.info(f'************ pooled_outputs size:{pooled_outputs.size()}')
 
-        logits, sent_embedding = model.classifier(pooled_outputs)
+        if isinstance(model, RobertaModelWithHeads):
+            classifier = ClassificationHead(model.config)
+            classifier.to(torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
+            logits, sent_embedding = classifier(pooled_outputs)
+        else:
+            logits, sent_embedding = model.classifier(pooled_outputs)
+
         if model.config.layer_representation_for_ood != 'penultimate_layer':
             sent_embedding = pooled_outputs
-
+        
     elif 'gpt' in model.config._name_or_path or 't5' in model.config._name_or_path:
         outputs = model.transformer(input_ids, attention_mask=attention_mask)
         hidden_states = outputs[0]  # From last layer of model - (N, L, D)
+        # logger.info(f'************ hidden_states size:{hidden_states.size()}')
 
         if model.config.sentence_embedding == 'average':
             weighted_token_states = (hidden_states * attention_mask.unsqueeze(-1))
@@ -34,11 +49,15 @@ def get_sent_embeddings(model,  input_ids, attention_mask):
             batch_size, sequence_length = input_ids.shape[:2]
             sequence_lengths = torch.ne(input_ids, model.config.pad_token_id).sum(-1) - 1
             pooled_outputs = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
-
+        
+        # logger.info(f'************ pooled_outputs size:{pooled_outputs.size()}')
         logits, sent_embedding = model.classifier(pooled_outputs)
         if model.config.layer_representation_for_ood != 'penultimate_layer':
             sent_embedding = pooled_outputs
 
+    # logger.info(f'************ logits size:{logits.size()}')
+    # logger.info(f'************ sent_embedding size:{sent_embedding.size()}')
+    
     return logits, sent_embedding
 
 
@@ -251,7 +270,7 @@ class ClassificationHead(nn.Module):
         x = self.out_proj(x)
 
         return x, pooled
-
+        
 
 class RobertaForSequenceClassification(BertPreTrainedModel):
     def __init__(self, config):

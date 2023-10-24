@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
-from src.utils.startup import exp_configs
+from utils.startup import exp_configs
+# from src.utils.startup import exp_configs
 
 
 def plot_historgram(scores, labels, title, x_label='Score', y_label='Frequency', savename=None):

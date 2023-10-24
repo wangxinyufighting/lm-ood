@@ -8,7 +8,8 @@ import random
 import logging
 import numpy as np
 from pynvml import *
-from src.utils.configs import Config
+from utils.configs import Config
+# from src.utils.configs import Config
 
 
 # Set logger

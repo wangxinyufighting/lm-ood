@@ -1,18 +1,25 @@
+import os
 import ast
 import torch
 import warnings
 import numpy as np
 from tqdm import tqdm
 from datasets import load_metric
-from transformers import RobertaConfig, GPT2Config, T5Config
+from transformers import RobertaConfig, GPT2Config, T5Config, RobertaModelWithHeads
+from transformers import TrainingArguments, AdapterTrainer, EvalPrediction
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from transformers.optimization import AdamW, get_linear_schedule_with_warmup
 
-from src.evaluation import evaluate_ood
-from src.utils.dataset_utils import DatasetUtil
-from src.utils.model_utils import load_tokenizer
-from src.utils.startup import set_seed, collate_fn, logger, exp_configs
-from src.model import RobertaForSequenceClassification, GPT2ForSequenceClassification, T5ForSequenceClassification, prepare_ood
+from evaluation import evaluate_ood
+from utils.dataset_utils import DatasetUtil
+from utils.model_utils import load_tokenizer
+from utils.startup import set_seed, collate_fn, logger, exp_configs
+from model import ClassificationHead, RobertaForSequenceClassification, GPT2ForSequenceClassification, T5ForSequenceClassification, prepare_ood
+# from src.evaluation import evaluate_ood
+# from src.utils.dataset_utils import DatasetUtil
+# from src.utils.model_utils import load_tokenizer
+# from src.utils.startup import set_seed, collate_fn, logger, exp_configs
+# from src.model import RobertaForSequenceClassification, GPT2ForSequenceClassification, T5ForSequenceClassification, prepare_ood
 
 warnings.filterwarnings("ignore")
 
@@ -44,8 +51,11 @@ def train(args, model, train_dataset, dev_dataset, test_dataset, benchmarks):
             ood_dataloader = torch.utils.data.DataLoader(ood_features, batch_size=args.batch_size, collate_fn=collate_fn)
             results = evaluate_ood(args, model, test_dataloader, ood_dataloader, tag=tag)
             logger.info('')
-            for k, v in results.items():
-                logger.info(f'{k}: {v}')
+            with open('./result.txt', 'w') as w:
+                for k, v in results.items():
+                    logger.info(f'{k}: {v}')
+                    w.write(str(k)+':'+str(v)+'\n')
+
             torch.cuda.empty_cache()
 
 
@@ -54,54 +64,83 @@ def train(args, model, train_dataset, dev_dataset, test_dataset, benchmarks):
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
 
     if args.do_train:
-        total_steps = int(len(train_dataloader) * args.num_train_epochs)
-        warmup_steps = int(total_steps * args.warmup_ratio)
+        if args.use_adapter:
+            training_args = TrainingArguments(
+                learning_rate=1e-4,
+                num_train_epochs=args.num_train_epochs,
+                # per_device_train_batch_size=32,
+                # per_device_eval_batch_size=32,
+                logging_steps=200,
+                output_dir="./training_output",
+                overwrite_output_dir=True,
+                # The next line is important to ensure the dataset labels are properly passed to the model
+                remove_unused_columns=False,
+            )
+            trainer = AdapterTrainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_dataset,
+                eval_dataset=dev_dataset,
+                compute_metrics=compute_accuracy,
+            )
 
-        no_decay = ["LayerNorm.weight", "bias"]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": args.weight_decay,
-            },
-            {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
-        ]
+            trainer.train()
+            trainer.evaluate()
+            save_path = "../models/adapter_models/"+args.model_class
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
 
-        optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
-        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
+            model.save_adapter(save_path, args.model_class)
 
-        if args.linear_probe:
-            logger.info(f"Freezing weights...")
-            for name, param in model.named_parameters():
-                if name.startswith("roberta"):  # choose whatever you like here
-                    param.requires_grad = False
+        if args.use_adapter is False:
+            total_steps = int(len(train_dataloader) * args.num_train_epochs)
+            warmup_steps = int(total_steps * args.warmup_ratio)
 
-        num_steps, best_test_acc = 0, 0.0
-        for epoch in range(int(args.num_train_epochs)):
-            logger.info(f'Epoch: {epoch+1}')
-            model.zero_grad()
+            no_decay = ["LayerNorm.weight", "bias"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": args.weight_decay,
+                },
+                {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+            ]
 
-            pbar = tqdm(train_dataloader)
-            for step, batch in enumerate(pbar):
-                model.train()
-                batch = {key: value.to(args.device) for key, value in batch.items()}
-                outputs = model(**batch)
-                loss, cos_loss = outputs[0], outputs[1]
-                loss.backward()
-                num_steps += 1
-                optimizer.step()
-                scheduler.step()
+            optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
+            scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
+
+            if args.linear_probe:
+                logger.info(f"Freezing weights...")
+                for name, param in model.named_parameters():
+                    if name.startswith("roberta"):  # choose whatever you like here
+                        param.requires_grad = False
+
+            num_steps, best_test_acc = 0, 0.0
+            for epoch in range(int(args.num_train_epochs)):
+                logger.info(f'Epoch: {epoch+1}')
                 model.zero_grad()
-                pbar.set_postfix(loss=loss.item(), cos_loss=cos_loss.item())
 
-            logger.info(f'Loss: {loss.item()} Cos Loss: {cos_loss.item()}')
+                pbar = tqdm(train_dataloader)
+                for step, batch in enumerate(pbar):
+                    model.train()
+                    batch = {key: value.to(args.device) for key, value in batch.items()}
+                    outputs = model(**batch)
+                    loss, cos_loss = outputs[0], outputs[1]
+                    loss.backward()
+                    num_steps += 1
+                    optimizer.step()
+                    scheduler.step()
+                    model.zero_grad()
+                    pbar.set_postfix(loss=loss.item(), cos_loss=cos_loss.item())
 
-            # Evaluation to study effect across epochs
-            if args.epoch_wise_eval:
-                results = evaluate(args, model, dev_dataloader, tag="test")
-                logger.info(results)
-                detect_ood()
-                model.save_pretrained(f'{args.savedir}_epoch-{epoch}')
-                logger.info('\nSaving model...')
+                logger.info(f'Loss: {loss.item()} Cos Loss: {cos_loss.item()}')
+
+                # Evaluation to study effect across epochs
+                if args.epoch_wise_eval:
+                    results = evaluate(args, model, dev_dataloader, tag="test")
+                    logger.info(results)
+                    detect_ood()
+                    model.save_pretrained(f'{args.savedir}_epoch-{epoch}')
+                    logger.info('\nSaving model...')
 
         if not args.epoch_wise_eval:
             logger.info('Training complete. Saving model...')
@@ -113,6 +152,9 @@ def train(args, model, train_dataset, dev_dataset, test_dataset, benchmarks):
         logger.info(results)
         detect_ood()
 
+def compute_accuracy(p: EvalPrediction):
+  preds = np.argmax(p.predictions, axis=1)
+  return {"acc": (preds == p.label_ids).mean()}
 
 def evaluate(args, model, dataloader, tag="train"):
     metric_name = task_to_metric[args.task_name]
@@ -181,13 +223,27 @@ def main(args):
     config.report_all_metrics = args.report_all_metrics
     config.sentence_embedding = args.sentence_embedding
 
-    # Load model
-    if args.model_class == 'roberta':
-        model = RobertaForSequenceClassification.from_pretrained(args.model_name_or_path, config=config)
-    elif args.model_class == 'gpt2':
-        model = GPT2ForSequenceClassification.from_pretrained(args.model_name_or_path, config=config)
-    elif args.model_class == 't5':
-        model = T5ForSequenceClassification.from_pretrained(args.model_name_or_path, config=config)
+    if args.use_adapter is True:
+        if args.model_class == 'roberta':
+            model = RobertaModelWithHeads.from_pretrained("roberta-base", config=config,)
+            model.add_adapter(args.model_class)
+            # model.register_custom_head(args.model_class, ClassificationHead)
+            # model.add_custom_head(head_type=args.model_class, head_name=args.model_class)
+            model.add_classification_head(args.model_class, num_labels=num_labels)
+            model.train_adapter(args.model_class)
+        elif args.model_class == 'gpt2':
+            model = GPT2ForSequenceClassification.from_pretrained(args.model_name_or_path, config=config)
+        elif args.model_class == 't5':
+            model = T5ForSequenceClassification.from_pretrained(args.model_name_or_path, config=config) 
+    else:
+        # Load model
+        if args.model_class == 'roberta':
+            model = RobertaForSequenceClassification.from_pretrained(args.model_name_or_path, config=config)
+        elif args.model_class == 'gpt2':
+            model = GPT2ForSequenceClassification.from_pretrained(args.model_name_or_path, config=config)
+        elif args.model_class == 't5':
+            model = T5ForSequenceClassification.from_pretrained(args.model_name_or_path, config=config)
+
     model.to(exp_configs.device)
     logger.info(f'Loaded model. Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
 

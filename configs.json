@@ -1,11 +1,12 @@
 {
-    "MODEL_DIR": "/nobackup/uppaal/checkpoints",
-    "DATA_DIR": "/afs/cs.wisc.edu/u/u/p/uppaal/Data",
-    "root_path": "/u/u/p/uppaal/Code/pretrained-models-for-ood-detection/src",
-    "task_name": "20newsgroups",
-    "ood_datasets": "['rte', '20newsgroups']",
+    "MODEL_DIR": "/root/autodl-tmp/lm-ood/models",
+    "DATA_DIR": "/root/autodl-tmp/lm-ood/data",
+    "root_path": "/root/autodl-tmp/lm-ood/src",
+    "task_name": "imdb",
+    "ood_datasets": "['sst2', 'imdb']",
     "model_class": "roberta",
-    "do_train": false,
-    "num_train_epochs": 10,
+    "do_train": true,
+    "use_adapter": true,
+    "num_train_epochs": 6,
     "CUDA_VISIBLE_DEVICES": 0
 }
