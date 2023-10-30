@@ -3,7 +3,7 @@
     "DATA_DIR": "/root/autodl-tmp/lm-ood/data",
     "root_path": "/root/autodl-tmp/lm-ood/src",
     "task_name": "imdb",
-    "ood_datasets": "['sst2', 'imdb']",
+    "ood_datasets": "['multi30k', 'imdb']",
     "model_class": "roberta",
     "do_train": true,
     "use_adapter": true,
