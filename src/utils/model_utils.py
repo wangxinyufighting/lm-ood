@@ -17,7 +17,7 @@ def load_model(model_path, num_labels=None, load_only_body=False):
         return model
 
 
-def load_tokenizer(model_str):
+def load_tokenizer(model_str, ft_model_path):
     if model_str == 'roberta':
         model_name = 'roberta-base'
     elif model_str == 'gpt2':
@@ -26,11 +26,14 @@ def load_tokenizer(model_str):
     elif model_str == 't5':
         model_name = 't5_base'
 
-    # model_path = exp_configs.MODEL_DIR + f'/{model_name}'
-    # tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    if model_str == 'gpt2_ft':
+       tokenizer = AutoTokenizer.from_pretrained(ft_model_path, use_fast=True) 
+    else:
+        # model_path = exp_configs.MODEL_DIR + f'/{model_name}'
+        # tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
-    if model_str == 'gpt2':
+    if 'gpt2' in model_str:
         tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.padding_side = "right"
+        tokenizer.padding_side = "right" 
     return tokenizer

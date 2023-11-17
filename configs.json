@@ -1,12 +1,15 @@
 {
-    "MODEL_DIR": "/root/autodl-tmp/lm-ood/models",
-    "DATA_DIR": "/root/autodl-tmp/lm-ood/data",
-    "root_path": "/root/autodl-tmp/lm-ood/src",
-    "task_name": "imdb",
-    "ood_datasets": "['multi30k', 'imdb']",
-    "model_class": "roberta",
-    "do_train": true,
-    "use_adapter": true,
+    "MODEL_DIR": "/root/autodl-fs/lm-ood/models",
+    "DATA_DIR": "/root/autodl-fs/lm-ood/data",
+    "root_path": "/root/autodl-fs/lm-ood/src",
+    "task_name": "clinc150",
+    "ood_datasets": "['clinc150']",
+    "model_class": "gpt2_ft",
+    "do_train": false,
+    "use_adapter": false,
     "num_train_epochs": 6,
-    "CUDA_VISIBLE_DEVICES": 0
+    "CUDA_VISIBLE_DEVICES": 0, 
+    "sentence_embedding": "mix1",
+    "add_token_num":0,
+    "ft_model_path": "/root/autodl-fs/lm-ood/models/no_token/171"
 }

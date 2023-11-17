@@ -38,7 +38,7 @@ class Config(object):
         self.num_train_epochs = 10
         self.linear_probe = False
         self.epoch_wise_eval = False
-        self.batch_size = 4
+        self.batch_size = 1
         self.learning_rate = 1e-5
         self.adam_epsilon = 1e-8
         self.warmup_ratio = 0.0
@@ -53,11 +53,14 @@ class Config(object):
         self.report_all_metrics = False
         self.debug_mode = False
 
-        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        self.CUDA_VISIBLE_DEVICES = '0'
+        self.device = torch.device(f'cuda:{self.CUDA_VISIBLE_DEVICES}') if torch.cuda.is_available() else torch.device('cpu')
         self.n_gpu = torch.cuda.device_count()
-        self.CUDA_VISIBLE_DEVICES = None
+        
 
         config_file = os.path.join(self.root_path, '..', 'configs.json')
+        self.ft_model_path = ''
+        self.add_token_num = 0
         self.update_kwargs(json.load(open(config_file)), eval=False)
 
 
@@ -75,7 +78,9 @@ class Config(object):
             setattr(self, k, v)
 
         # self.model_name_or_path = self.model_class
-        if self.model_class == 'gpt2':
+        if self.model_class == 'gpt2_ft':
+            self.model_name_or_path = self.ft_model_path
+        elif self.model_class == 'gpt2':
             self.model_name_or_path = self.model_class
         elif self.model_class == 'roberta':
             self.model_name_or_path = 'roberta-base'

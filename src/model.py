@@ -1,5 +1,6 @@
 import torch
 import faiss
+from tqdm import tqdm
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -54,7 +55,30 @@ def get_sent_embeddings(model, input_ids, attention_mask):
         logits, sent_embedding = model.classifier(pooled_outputs)
         if model.config.layer_representation_for_ood != 'penultimate_layer':
             sent_embedding = pooled_outputs
-
+    else:
+        outputs = model.transformer(input_ids, attention_mask=attention_mask)
+        hidden_states = outputs[0]
+        logits = None
+        batch_size, sequence_length = input_ids.shape[:2]
+        weighted_token_states = (hidden_states * attention_mask.unsqueeze(-1))
+        if model.config.sentence_embedding == 'average':
+            sent_embedding = weighted_token_states.sum(dim=1) / attention_mask.sum(dim=1).unsqueeze(-1)  # Average non-zero tokens
+        elif model.config.sentence_embedding == 'last':
+            sent_embedding = weighted_token_states[:, sequence_length-1, :]
+        elif model.config.sentence_embedding == 'head':
+            add_token_num = model.config.add_token_num
+            sent_embedding = weighted_token_states[:, :add_token_num, :].sum(dim=1) / attention_mask[:, :add_token_num].sum(dim=1).unsqueeze(-1) 
+        elif model.config.sentence_embedding == 'mix1':
+            choose_index = [0, sequence_length-1]
+            add_token_embedding_and_last_token_avg = weighted_token_states[:, choose_index, :].sum(dim=1) / attention_mask[:, choose_index].sum(dim=1).unsqueeze(-1) 
+            sent_embedding = add_token_embedding_and_last_token_avg
+        elif model.config.sentence_embedding == 'mix':
+            add_token_num = model.config.add_token_num if model.config.add_token_num != 0 else 4 
+            choose_index = list(range(add_token_num))
+            choose_index.append(sequence_length-1)
+            add_token_embedding_and_last_token_avg = weighted_token_states[:, choose_index, :].sum(dim=1) / attention_mask[:, choose_index].sum(dim=1).unsqueeze(-1) 
+            sent_embedding = add_token_embedding_and_last_token_avg
+                 
     # logger.info(f'************ logits size:{logits.size()}')
     # logger.info(f'************ sent_embedding size:{sent_embedding.size()}')
     
@@ -102,10 +126,13 @@ def compute_loss(model, labels, logits, pooled):
 
 
 def get_bank(dataloader, model):
+    print("***** get bank start!")
     bank = None         # Concatenation of all pooled outputs (i.e. penultimate layer representations)
     label_bank = None   # Concatenations of labels
 
-    for batch in dataloader:
+    print(next(iter(dataloader)))
+
+    for batch in tqdm(dataloader):
         model.eval()
         batch = {key: value.to(exp_configs.device) for key, value in batch.items()}
         labels = batch['labels']
@@ -117,11 +144,13 @@ def get_bank(dataloader, model):
         else:
             bank = torch.cat([pooled.clone().detach(), bank], dim=0)
             label_bank = torch.cat([labels.clone().detach(), label_bank], dim=0)
+    print("***** get bank finish!")
 
     return bank, label_bank
 
 
 def prepare_ood(model, is_train, dataloader=None):
+    print('****** prepare_ood start! ')
 
     if is_train:
         model.bank, model.label_bank = get_bank(dataloader, model)
@@ -217,11 +246,14 @@ def compute_ood(model, input_ids=None, attention_mask=None, labels=None):
 
     # Softmax/ MSP Score
     m = torch.nn.Softmax(dim=-1).cuda()
-    softmax_score, _ = torch.max(m(logits), dim=-1)
+    if logits is not None:
+        softmax_score, _ = torch.max(m(logits), dim=-1)
+    else:
+        softmax_score = None
 
     # Energy Score
     temperature = 1
-    energy_score = temperature * torch.logsumexp(logits / temperature, dim=1)
+    energy_score = temperature * torch.logsumexp(logits / temperature, dim=1) if logits is not None else None
 
     # Mahalanobis Distance Score
     maha_score = []
@@ -242,8 +274,8 @@ def compute_ood(model, input_ids=None, attention_mask=None, labels=None):
     knn_distances = -1 * (1 - scores[:, k-1])
 
     ood_keys = {}
-    ood_keys['softmax'] = softmax_score.tolist()
-    ood_keys['energy'] = energy_score.tolist()
+    ood_keys['softmax'] = softmax_score.tolist() if softmax_score is not None else []
+    ood_keys['energy'] = energy_score.tolist()  if energy_score is not None else []
     ood_keys['maha'] = maha_score.tolist()
     ood_keys['kNN'] = knn_distances.tolist()
 

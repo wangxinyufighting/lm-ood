@@ -12,6 +12,7 @@ logs/*
 temp_outputs/*
 src/wandb/*
 src/training_output/*
+models/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

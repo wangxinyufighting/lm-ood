@@ -5,6 +5,7 @@ from sklearn.metrics import roc_auc_score
 
 from model import compute_ood
 from utils.mmd import MMD
+from tqdm import tqdm
 # from src.utils.mmd import MMD
 
 
@@ -25,7 +26,8 @@ def evaluate_ood(args, model, id_dataloader, ood_dataloader, tag):
     model.pooled_ood = None
     model.total_ood_cosine_sim = None
 
-    for batch in id_dataloader:
+    print('****** get id data scores start!')
+    for batch in tqdm(id_dataloader):
         model.eval()
         batch = {key: value.to(args.device) for key, value in batch.items()}
         with torch.no_grad():
@@ -33,11 +35,13 @@ def evaluate_ood(args, model, id_dataloader, ood_dataloader, tag):
                                    attention_mask=batch['attention_mask'])
             in_scores.append(ood_keys)
     in_scores = merge_keys(in_scores, list(in_scores[0].keys()))
+    print('****** get id data scores finished! ')
 
     out_scores = []
     model.pooled_ood = None
     model.total_ood_cosine_sim = None
-    for batch in ood_dataloader:
+    print('****** get ood data scores')
+    for batch in tqdm(ood_dataloader):
         model.eval()
         batch = {key: value.to(args.device) for key, value in batch.items()}
         with torch.no_grad():
@@ -45,6 +49,7 @@ def evaluate_ood(args, model, id_dataloader, ood_dataloader, tag):
                                    attention_mask=batch['attention_mask'])
             out_scores.append(ood_keys)
     out_scores = merge_keys(out_scores, list(out_scores[0].keys()))
+    print('****** get ood data scores finished! ')
 
     outputs = {}
 
@@ -54,21 +59,26 @@ def evaluate_ood(args, model, id_dataloader, ood_dataloader, tag):
     id_ood_seperability = (model.total_ood_cosine_sim.mean() - model.id_cosine_sim).detach().cpu().numpy()
     outputs[f'{tag}_id-ood-seperability'] = id_ood_seperability
 
-    for key in list(ood_keys.keys()):
-        ins = np.array(in_scores[key], dtype=np.float64)
-        outs = np.array(out_scores[key], dtype=np.float64)
-        inl = np.ones_like(ins).astype(np.int64)
-        outl = np.zeros_like(outs).astype(np.int64)
-        scores = np.concatenate([ins, outs], axis=0)
-        labels = np.concatenate([inl, outl], axis=0)
-        labels_rev = 1-labels # Flip 0s and 1s
+    print(outputs)
 
-        aupr_in = sk.average_precision_score(labels, scores)
-        aupr_out = sk.average_precision_score(labels_rev, -scores)
-        auroc = sk.roc_auc_score(labels, scores)
-        fpr = fpr_and_fdr_at_recall(labels, scores, recall_level=0.95)
+    print(ood_keys)
 
-        outputs[f'{tag}_{key}'] = {'AUROC': auroc, 'AUPR-IN': aupr_in, 'AUPR-OUT': aupr_out, 'FPR95':fpr}
+    for key in tqdm(list(ood_keys.keys())):
+        if len(ood_keys[key]) > 0:
+            ins = np.array(in_scores[key], dtype=np.float64)
+            outs = np.array(out_scores[key], dtype=np.float64)
+            inl = np.ones_like(ins).astype(np.int64)
+            outl = np.zeros_like(outs).astype(np.int64)
+            scores = np.concatenate([ins, outs], axis=0)
+            labels = np.concatenate([inl, outl], axis=0)
+            labels_rev = 1-labels # Flip 0s and 1s
+
+            aupr_in = sk.average_precision_score(labels, scores)
+            aupr_out = sk.average_precision_score(labels_rev, -scores)
+            auroc = sk.roc_auc_score(labels, scores)
+            fpr = fpr_and_fdr_at_recall(labels, scores, recall_level=0.95)
+
+            outputs[f'{tag}_{key}'] = {'AUROC': auroc, 'AUPR-IN': aupr_in, 'AUPR-OUT': aupr_out, 'FPR95':fpr}
 
     return outputs
 
